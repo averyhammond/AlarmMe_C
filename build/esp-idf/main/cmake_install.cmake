@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/avery/Desktop/AlarmMe_C/main
+# Install script for directory: C:/Users/avery/Desktop/AlarmMe_C/AlarmMe_C/main
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
