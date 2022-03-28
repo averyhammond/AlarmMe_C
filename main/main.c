@@ -27,8 +27,8 @@ void run(void)
     while(1) {
 
         // Loop to display sensor data
-        display_sensor_data();
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        //display_sensor_data();
+        //vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
     return;  // Should never return
