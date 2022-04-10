@@ -39,7 +39,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/avery/Desktop/AlarmMe_C/AlarmMe_C/build/esp-idf/esp_system/port/cmake_install.cmake")
+  include("C:/Users/avery/Desktop/AlarmMe/AlarmMe Board/AlarmMe_C/build/esp-idf/esp_system/port/cmake_install.cmake")
 
 endif()
 

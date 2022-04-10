@@ -1,4 +1,4 @@
-/* * Data converted from C:/Users/avery/Desktop/AlarmMe_C/AlarmMe_C/build/esp-idf/mbedtls/x509_crt_bundle
+/* * Data converted from C:/Users/avery/Desktop/AlarmMe/AlarmMe Board/AlarmMe_C/build/esp-idf/mbedtls/x509_crt_bundle
  */
 .data
 .section .rodata.embedded

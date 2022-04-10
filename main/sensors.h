@@ -19,19 +19,11 @@
 void init(void);
 void ADC_init(void);
 void GPIO_init(void);
-void I2C_init(void);
-void setup_timer(void);
 void display_sensor_data(void);
 void run(void);
-static void IRAM_ATTR get_sensor_data(void *args);
+void get_sensor_data(void);
 uint32_t get_temp_data(void);
 uint32_t get_pres_data(void);
-uint32_t get_co2_data(void);
-void clear_flags(void);
-void process_data(void);
-void alarm(void);
-void set_alarms(void);
-void configure_wdt(void);
 
 
 // Sensor_Data Struct to hold all necessary sensor values
@@ -64,23 +56,11 @@ struct Sensor_Data Sensors = {
 void init(void)
 {
     ADC_init();
-    // TODO: UART_init();
-    I2C_init();
     GPIO_init();
 
-    //configure_wdt();
-
     return;
 }
 
-
-void configure_wdt()
-{
-    rtc_wdt_protect_off();
-    rtc_wdt_disable();
-
-    return;
-}
 
 // Function to setup ADC1 Channel 6 and ADC1 Channel 3 to take outputs from the temperature and pressure sensors, respectively
 void ADC_init(void) 
@@ -92,27 +72,6 @@ void ADC_init(void)
     return;
 }
 
-
-// TODO: UART_init()
-
-
-// TODO: I2C_init()
-void I2C_init()
-{
-    i2c_config_t config = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = 23,
-        .scl_io_num = 22,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 400000,
-    };
-
-    i2c_param_config(I2C_NUM_0, &config);
-    i2c_driver_install(I2C_NUM_0, config.mode, 0, 0, 0);
-
-    return;
-}
 
 
 // Function to initialize all the necessary GPIO ports
@@ -131,137 +90,22 @@ void GPIO_init()
 }
 
 
-// Function to configure a timer to sample at 1Hz
-void setup_timer(void)
-{
-    // Initialize timer config structure
-    timer_config_t config = {
-        .divider = 8000,
-        .counter_dir = TIMER_COUNT_UP,
-        .counter_en = false,
-        .alarm_en = true,
-        .auto_reload = true,
-        .intr_type = TIMER_INTR_LEVEL,
-    };
-
-    // Initialize timer attributes
-    timer_init(TIMER_GROUP_0, TIMER_0, &config);
-    timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
-    timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, 10000);
-    timer_enable_intr(TIMER_GROUP_0, TIMER_0);
-    timer_isr_register(TIMER_GROUP_0, TIMER_0, get_sensor_data, (void *) TIMER_0, ESP_INTR_FLAG_IRAM, NULL);
-    
-    // Start timer
-    timer_start(TIMER_GROUP_0, TIMER_0);
-
-    return;
-}
-
-
 // Debugging function to print current sensor data to terminal
 void display_sensor_data()
 {
-    printf("Temp: %d\nPres: %d\nCO2: %d\nTime w/ No Pres: %d\n", Sensors.curr_temp, Sensors.curr_pres, Sensors.curr_co2, Sensors.no_pres_time);
-    printf("alarm_temp: %d\n", Sensors.alarm_temp);
+    printf("Temp: %d\nPres: %d\n", Sensors.curr_temp, Sensors.curr_pres);
 
     return;
 }
 
 
 // Funtion to sample all sensors and upload results to global Sensors data struct
-static void IRAM_ATTR get_sensor_data(void *args)
+void get_sensor_data(void)
 {
-    clear_flags();
-
     Sensors.curr_temp = get_temp_data();
     Sensors.curr_pres = get_pres_data();
-    Sensors.curr_co2 = get_co2_data();
-
-    process_data();
 
     Sensors = Sensors;  // Errors otherwise
-
-    // Prepare for next timer iteration
-    TIMERG0.int_clr_timers.t0 = 1;
-    TIMERG0.hw_timer[0].config.alarm_en = 1;
-
-    return;
-}
-
-
-// Function to clear any flags before next timer fires
-void clear_flags(void)
-{
-    // Clear flags
-    Sensors.invalid_temp = false;
-    Sensors.invalid_pres = false;
-    Sensors.alarm_temp = false;
-    Sensors.alarm_co2 = false;
-
-    // Reset LED and buzzer to OFF
-    gpio_set_level(4, 0);
-    // TODO: Reset buzzer to OFF
-
-    return;
-}
-
-
-// Function to interpret sensor data to set alarm flags and enter alarm states
-void process_data(void)
-{
-    // TODO: set_alarms()
-    set_alarms();
-
-    // Case: Alarm flags have been set, trigger alarm state
-    if ((Sensors.alarm_temp || Sensors.alarm_co2) && Sensors.curr_pres > 2000)
-    {
-        alarm();
-    }
-
-    // Case: No child in seat, increment no_pres_time
-    if (Sensors.curr_pres < 2000)
-    {
-        Sensors.no_pres_time += 1;
-
-        // Case: No child in seat for 60 seconds, put AlarmMe into deep sleep
-        if (Sensors.no_pres_time >= SLEEP_TIME_THRESH)
-        {
-            esp_deep_sleep_start();
-            return;
-        }
-    }
-
-    // Case: Child detected in seat, set no_pres_time to 0
-    else if (Sensors.curr_pres > 0)
-    {
-        Sensors.no_pres_time = 0;
-    }
-
-    return;
-}
-
-
-// Function to check the current readings and determine if alarm state should be triggered
-void set_alarms()
-{
-    if ((Sensors.curr_temp > 70) && (Sensors.curr_pres > 2000))
-    {
-        Sensors.alarm_temp = 1;
-    }
-
-    // TODO: Check CO2 readings
-
-    return;
-}
-
-
-// Alarm state function: triggers buzzer and LED light and sends SMS messages
-void alarm()
-{
-    // Enable the red LED
-    gpio_set_level(4, 1);
-
-    // TODO: Enable buzzer
 
     return;
 }
@@ -284,29 +128,4 @@ uint32_t get_pres_data(void)
     adc1_ch3_pres += adc1_get_raw((adc1_channel_t) ADC_CHANNEL_3);
         
     return adc1_ch3_pres;
-}
-
-
-uint32_t get_co2_data()
-{
-    uint32_t co2_data = 0;
-    uint8_t init[2] = {0x20, 0x03};
-    uint8_t meas[2] = {0x20, 0x08};
-    uint8_t res[6];
-
-    rtc_wdt_feed();
-    i2c_master_write_to_device(I2C_NUM_0, 0x58, init, 2, 1000 / portTICK_RATE_MS);
-    vTaskDelay(10 / portTICK_RATE_MS);
-    rtc_wdt_feed();
-
-    i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
-    vTaskDelay(12 / portTICK_RATE_MS);
-    rtc_wdt_feed();
-
-    i2c_master_read_from_device(I2C_NUM_0, 0x58, res, 6, 1000 / portTICK_RATE_MS);
-
-    uint8_t temp_res[2] = {res[0], res[1]};
-    co2_data = temp_res[0] << 8 | temp_res[1];
-
-    return co2_data;
 }

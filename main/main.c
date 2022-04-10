@@ -12,7 +12,6 @@
 void app_main(void)
 {
     init();  // Initialize peripherals
-    setup_timer();  // Setup timer for 1Hz operation
     run();  // Regular Operation
 
     // Should never reach here
@@ -27,8 +26,9 @@ void run(void)
     while(1) {
 
         // Loop to display sensor data
-        //display_sensor_data();
-        //vTaskDelay(1000 / portTICK_PERIOD_MS);
+        display_sensor_data();
+        get_sensor_data();
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
     return;  // Should never return
