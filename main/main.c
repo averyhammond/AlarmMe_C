@@ -28,6 +28,7 @@ void run(void)
         // Loop to display sensor data
         display_sensor_data();
         get_sensor_data();
+        process_data();
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 

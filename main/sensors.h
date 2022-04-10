@@ -24,6 +24,10 @@ void run(void);
 void get_sensor_data(void);
 uint32_t get_temp_data(void);
 uint32_t get_pres_data(void);
+void process_data(void);
+void clear_flags(void);
+void set_alarms(void);
+void alarm(void);
 
 
 // Sensor_Data Struct to hold all necessary sensor values
@@ -86,6 +90,10 @@ void GPIO_init()
     gpio_pad_select_gpio(4);
     gpio_set_direction(4, GPIO_MODE_OUTPUT);
 
+    // Configure IO25 as an output for buzzer alarm
+    gpio_pad_select_gpio(25);
+    gpio_set_direction(25, GPIO_MODE_OUTPUT);
+
     return;
 }
 
@@ -107,6 +115,63 @@ void get_sensor_data(void)
 
     Sensors = Sensors;  // Errors otherwise
 
+    return;
+}
+
+
+// Function to interpret sensor data to set alarm flags and enter alarm states
+void process_data(void)
+{
+    clear_flags();
+    set_alarms();
+
+    // Case: Alarm flags have been set, trigger alarm state
+    if ((Sensors.alarm_temp || Sensors.alarm_co2) && Sensors.curr_pres == 4095)
+    {
+        alarm();
+    }
+
+    return;
+}
+
+
+// Function to clear any flags before next timer fires
+void clear_flags(void)
+{
+    // Clear flags
+    Sensors.invalid_temp = false;
+    Sensors.invalid_pres = false;
+    Sensors.alarm_temp = false;
+    Sensors.alarm_co2 = false;
+
+    // Reset LED and buzzer to OFF
+    gpio_set_level(4, 0);
+    gpio_set_level(25, 0);
+
+    return;
+}
+
+
+// Function to check the current readings and determine if alarm state should be triggered
+void set_alarms()
+{
+    if ((Sensors.curr_temp > 70) && (Sensors.curr_pres > 2000))
+    {
+        Sensors.alarm_temp = 1;
+    }
+
+    // TODO: Check CO2 readings
+
+    return;
+}
+
+
+// Alarm state function: triggers buzzer and LED light and sends SMS messages
+void alarm()
+{
+    // Enable the red LED
+    gpio_set_level(4, 1);
+    gpio_set_level(25, 1);
     return;
 }
 
