@@ -72,9 +72,13 @@ void init(void)
 // Function to setup ADC1 Channel 6 and ADC1 Channel 3 to take outputs from the temperature and pressure sensors, respectively
 void ADC_init(void) 
 {
+    printf("Beginning ADC_init()...\n\n");
+
     adc1_config_width(ADC_WIDTH_BIT_12);  // Configure for 12 bit resolution
     adc1_config_channel_atten(ADC_CHANNEL_6, ADC_ATTEN_DB_11);  // IO7 on ADC 1, 11 DB Attenuation, temperature sensor
     adc1_config_channel_atten(ADC_CHANNEL_3, ADC_ATTEN_DB_11);  // IO39 on ADC1, 11 DB, Attenuation, pressure sensor
+
+    printf("ADC peripherals successfully initialized!\n\n");
 
     return;
 }
@@ -84,6 +88,8 @@ void ADC_init(void)
 // Function to initialize all the necessary GPIO ports
 void GPIO_init()
 {
+    printf("Beginning GPIO_init()...\n\n");
+
     // Configure IO26 as an input for external wakeup
     gpio_pad_select_gpio(26);
     gpio_set_direction(26, GPIO_MODE_INPUT);
@@ -97,6 +103,8 @@ void GPIO_init()
     gpio_pad_select_gpio(25);
     gpio_set_direction(25, GPIO_MODE_OUTPUT);
 
+    printf("GPIO pins successfully initialized!\n\n");
+
     return;
 }
 
@@ -104,6 +112,8 @@ void GPIO_init()
 // Function to initialize all the necessary I2C connections
 void I2C_init()
 {
+    printf("Beginning I2C_init()...\n\n");
+
     i2c_config_t config = {
         .mode = I2C_MODE_MASTER,
         .sda_io_num = 23,
@@ -125,6 +135,8 @@ void I2C_init()
     i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
     vTaskDelay(100 / portTICK_RATE_MS);
 
+    printf("I2C devices successfully initialized!\n\n");
+
     return;
 }
 
@@ -132,7 +144,7 @@ void I2C_init()
 // Debugging function to print current sensor data to terminal
 void display_sensor_data()
 {
-    printf("Temp: %d\nPres: %d\nCO2: %d\n", Sensors.curr_temp, Sensors.curr_pres, Sensors.curr_co2);
+    printf("Temp: %d\nPres: %d\nCO2: %d\nNo Pres Time: %d\n\n", Sensors.curr_temp, Sensors.curr_pres, Sensors.curr_co2, Sensors.no_pres_time);
 
     return;
 }
@@ -157,8 +169,22 @@ void process_data(void)
     clear_flags();
     set_alarms();
 
+    if (Sensors.curr_pres == 0)
+    {
+        Sensors.no_pres_time += 1;
+
+        if (Sensors.no_pres_time == 20)
+        {
+            esp_deep_sleep_start();
+        }
+    }
+    else
+    {
+        Sensors.no_pres_time = 0;
+    }
+
     // Case: Alarm flags have been set, trigger alarm state
-    if ((Sensors.alarm_temp || Sensors.alarm_co2) && Sensors.curr_pres == 4095)
+    if (Sensors.alarm_temp || Sensors.alarm_co2)
     {
         alarm();
     }
@@ -187,9 +213,14 @@ void clear_flags(void)
 // Function to check the current readings and determine if alarm state should be triggered
 void set_alarms()
 {
-    if ((Sensors.curr_temp > 70) && (Sensors.curr_pres > 2000))
+    if ((Sensors.curr_temp > 70) && (Sensors.curr_pres == 4095))
     {
         Sensors.alarm_temp = 1;
+    }
+
+    if ((Sensors.curr_co2 < 400) && (Sensors.curr_pres == 4095))
+    {
+        Sensors.alarm_co2 = 1;
     }
 
     return;
@@ -201,7 +232,10 @@ void alarm()
 {
     // Enable the red LED
     gpio_set_level(4, 1);
+
+    // Enable buzzer
     gpio_set_level(25, 1);
+
     return;
 }
 
