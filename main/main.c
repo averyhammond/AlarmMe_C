@@ -6,6 +6,7 @@
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
 #include "sensors.h"
+#include "ATCommands.h"
 
 
 // Main control flow for AlarmMe
