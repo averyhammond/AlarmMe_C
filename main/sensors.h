@@ -5,21 +5,16 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/adc.h"
-#include "esp_adc_cal.h"
 #include "driver/timer.h"
 #include "esp_sleep.h"
-#include "soc/rtc.h"
 #include "driver/i2c.h"
-#include "soc/rtc_wdt.h"
 #include "driver/uart.h"
-#include "ATCommands.h"
 
 
 #define SLEEP_TIME_THRESH 10
 
 
 // Function Declarations
-void init(void);
 void ADC_init(void);
 void GPIO_init(void);
 void I2C_init(void);
@@ -34,8 +29,7 @@ void process_data(void);
 void clear_flags(void);
 void set_alarms(void);
 void alarm(void);
-void Send_AT_Commands(char *  cmd, int cmdSize);
-void print_SIM_Response(char * response);
+void print_SIM_Response(char * response, int start, int len);
 
 
 // Sensor_Data Struct to hold all necessary sensor values
@@ -62,18 +56,6 @@ struct Sensor_Data Sensors = {
     .curr_co2 = 0,
     .alarm_co2 = false
 };
-
-
-// Caller function to initialize all necessary peripherals
-void init(void)
-{
-    ADC_init();
-    GPIO_init();
-    I2C_init();
-    UART_init();
-
-    return;
-}
 
 
 // Function to setup ADC1 Channel 6 and ADC1 Channel 3 to take outputs from the temperature and pressure sensors, respectively
@@ -166,24 +148,28 @@ void UART_init(void)
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE, 
     };
-    //ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+
     uart_param_config(uart_num, &uart_config);
-
-    // Set UART pins
     uart_set_pin(uart_num, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(uart_num, 1024 * 2, 0, 0, NULL, 0);
+    
+    int i = 0;
+    char data[256]; // Char buffer to hold response from SIM module
 
-    // Install UART driver
-    uart_driver_install(uart_num, 1024 * 2, 1024 * 2, 0, NULL, 0);
+    i = uart_write_bytes(uart_num, "AT\r\n", sizeof("AT\r\n") - 1); 
+    printf("uart_write_bytes returns: %d cmdSize is: %d\n", i, sizeof("AT\r\n") - 1);
+	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
+    int len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
+    printf("uart_read_bytes returns: %d\n", len);
+    print_SIM_Response(data, 1, len);
 
-    //Send_AT_Commands(cmd_error.cmd, cmd_error.cmdSize); // Enable error flags for debugging
-    Send_AT_Commands(cmd_AT.cmd, cmd_AT.cmdSize); // Send basic attention command 
-    //Send_AT_Commands(cmd_signalQuality.cmd, cmd_signalQuality.cmdSize); // Check the signal strength 
-    //Send_AT_Commands(cmd_SMSMode.cmd, cmd_SMSMode.cmdSize);  // Set to 'text' mode
-    //Send_AT_Commands(cmd_GSMMode.cmd, cmd_GSMMode.cmdSize); // Manually set character-set to "GSM" 
-    //Send_AT_Commands(cmd_checkCSCS.cmd, cmd_checkCSCS.cmdSize); // Verify that the charaacter-set is set to "GSM"
-    //Send_AT_Commands(cmd_sendSMS.cmd, cmd_sendSMS.cmdSize);  // Set the phone number to send to text to
-    //Send_AT_Commands(cmd_message.cmd, cmd_message.cmdSize); // Send the actual message to phone
-     
+    i = uart_write_bytes(uart_num, "AT+CSQ\r\n", sizeof("AT+CSQ\r\n") - 1); 
+    printf("uart_write_bytes returns: %d cmdSize is: %d\n", i, sizeof("AT+CSQ\r\n") - 1);
+	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
+    len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
+    printf("uart_read_bytes returns: %d\n", len);
+    print_SIM_Response(data, 0, len);
+
     printf("UART Peripheral successfully initialized!\n\n");
 
     return; 
@@ -331,38 +317,14 @@ uint32_t get_co2_data()
 }
 
 
-void Send_AT_Commands(char * cmd, int cmdSize)
-{
-    int i = 0;
-
-    char data[100]; // Char buffer to hold response from SIM module
-
-    const uart_port_t uart_num = UART_NUM_2; // UART channel 2 
-
-    // Write AT command to the SIM module and wait for response
-    i = uart_write_bytes(uart_num, (const char*)cmd, cmdSize); 
-
-    printf("uart_write_bytes returns: %d cmdSize is: %d\n", i, cmdSize);
-
-	uart_wait_tx_done(uart_num, 300 / portTICK_RATE_MS); 
-
-    // Retrieve the response from SIM module 
-    int len = uart_read_bytes(uart_num, data, 100, 3000 / portTICK_RATE_MS);
-
-    printf("uart_read_bytes returns: %d\n", len);
-
-    print_SIM_Response(data);
-}
-
-
-void print_SIM_Response(char * response)
+void print_SIM_Response(char * response, int start, int len)
 {
     
     //printf("The response from the SIM800L for the provided AT command is:\n");  
     printf("-----------------------------------------------------------\n"); 
 
     int i; 
-    for(i = 0; i < 256; i++)
+    for(i = start; i < len; i++)
     {
         printf("%c", response[i]); 
     }
