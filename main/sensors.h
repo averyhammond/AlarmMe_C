@@ -11,20 +11,15 @@
 #include "driver/uart.h"
 
 
-#define SLEEP_TIME_THRESH 10
-
-
 // Function Declarations
 void ADC_init(void);
 void GPIO_init(void);
 void I2C_init(void);
 void UART_init(void);
 void display_sensor_data(void);
-void run(void);
-void get_sensor_data(void);
-uint32_t get_temp_data(void);
-uint32_t get_pres_data(void);
-uint32_t get_co2_data(void);
+void get_temp_data(void *argv);
+void get_pres_data(void *argv);
+void get_co2_data(void *argv);
 void process_data(void);
 void clear_flags(void);
 void set_alarms(void);
@@ -103,6 +98,7 @@ void I2C_init()
 {
     printf("Beginning I2C_init()...\n\n");
 
+    // Configure I2C bus
     i2c_config_t config = {
         .mode = I2C_MODE_MASTER,
         .sda_io_num = 23,
@@ -115,12 +111,15 @@ void I2C_init()
     i2c_param_config(I2C_NUM_0, &config);
     i2c_driver_install(I2C_NUM_0, config.mode, 0, 0, 0);
 
+    // Commands to CO2 sensor
     uint8_t init[2] = {0x20, 0x03};
     uint8_t meas[2] = {0x20, 0x08};
     
+    // Write initialization command to CO2 sensor
     i2c_master_write_to_device(I2C_NUM_0, 0x58, init, 2, 1000 / portTICK_RATE_MS);
     vTaskDelay(10 / portTICK_RATE_MS);
 
+    // Write measure command to CO2 sensor
     i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
     vTaskDelay(100 / portTICK_RATE_MS);
 
@@ -135,8 +134,9 @@ void UART_init(void)
 {
     printf("Beginning UART_init()...\n\n");
     
-    gpio_set_direction(17, GPIO_MODE_OUTPUT); // TX pin configuration (IO17)
-	gpio_set_direction(16, GPIO_MODE_INPUT);  // RX Pin configuration (I016)
+    // Configure TX as IO17 and RX as IO16
+    gpio_set_direction(17, GPIO_MODE_OUTPUT);
+	gpio_set_direction(16, GPIO_MODE_INPUT);
 
     // Configure UART parameters
     const uart_port_t uart_num = UART_NUM_2; // UART channel 2 
@@ -153,21 +153,21 @@ void UART_init(void)
     uart_set_pin(uart_num, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_driver_install(uart_num, 1024 * 2, 0, 0, NULL, 0);
     
-    int i = 0;
-    char data[256]; // Char buffer to hold response from SIM module
+    char data[256];
+    int len = 0;
 
-    i = uart_write_bytes(uart_num, "AT\r\n", sizeof("AT\r\n") - 1); 
-    printf("uart_write_bytes returns: %d cmdSize is: %d\n", i, sizeof("AT\r\n") - 1);
-	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
-    int len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
-    printf("uart_read_bytes returns: %d\n", len);
-    print_SIM_Response(data, 1, len);
-
-    i = uart_write_bytes(uart_num, "AT+CSQ\r\n", sizeof("AT+CSQ\r\n") - 1); 
-    printf("uart_write_bytes returns: %d cmdSize is: %d\n", i, sizeof("AT+CSQ\r\n") - 1);
+    // Send AT command to SIM
+    printf("Sending \'AT\' to SIM Module...\n");
+    uart_write_bytes(uart_num, "AT\r\n", sizeof("AT\r\n") - 1);
 	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
     len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
-    printf("uart_read_bytes returns: %d\n", len);
+    print_SIM_Response(data, 1, len);
+
+    // Send AT+CSQ command to SIM
+    printf("Sending \'AT=CSQ\' to SIM Module...\n");
+    uart_write_bytes(uart_num, "AT+CSQ\r\n", sizeof("AT+CSQ\r\n") - 1); 
+	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
+    len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
     print_SIM_Response(data, 0, len);
 
     printf("UART Peripheral successfully initialized!\n\n");
@@ -176,25 +176,10 @@ void UART_init(void)
 }
 
 
-
-
 // Debugging function to print current sensor data to terminal
 void display_sensor_data()
 {
     printf("Temp: %d\nPres: %d\nCO2: %d\nNo Pres Time: %d\n\n", Sensors.curr_temp, Sensors.curr_pres, Sensors.curr_co2, Sensors.no_pres_time);
-
-    return;
-}
-
-
-// Funtion to sample all sensors and upload results to global Sensors data struct
-void get_sensor_data(void)
-{
-    Sensors.curr_temp = get_temp_data();
-    Sensors.curr_pres = get_pres_data();
-    Sensors.curr_co2 = get_co2_data();
-
-    Sensors = Sensors;  // Errors otherwise
 
     return;
 }
@@ -277,50 +262,65 @@ void alarm()
 }
 
 
-// Function to sample the temperature sensor via ADC
-uint32_t get_temp_data(void)
+void get_temp_data(void *argv)
 {
-    uint32_t adc1_ch6_temp = 0;
-    adc1_ch6_temp += adc1_get_raw((adc1_channel_t) ADC_CHANNEL_6);
+    uint32_t temp = 0;
+
+    while(1)
+    {
+        temp = adc1_get_raw((adc1_channel_t) ADC_CHANNEL_6);
+        Sensors.curr_temp = ((((1.8663 - ((temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20;
+        vTaskDelay(100 / portTICK_RATE_MS);
+    }
+
+    return;  // Should never reach
+}
+
+
+void get_pres_data(void *argv)
+{
+    uint32_t pres = 0;
     
-    return ((((1.8663 - ((adc1_ch6_temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20;
-}
-
-
-// Function to sample the pressure sensor via ADC
-uint32_t get_pres_data(void)
-{
-    uint32_t adc1_ch3_pres = 0;
-    adc1_ch3_pres += adc1_get_raw((adc1_channel_t) ADC_CHANNEL_3);
+    while(1)
+    {
+        pres = adc1_get_raw((adc1_channel_t) ADC_CHANNEL_3);
+        Sensors.curr_pres = pres;
+        vTaskDelay(100 / portTICK_RATE_MS);
+    }
         
-    return adc1_ch3_pres;
+    return;
 }
 
 
-// Function to read the CO2 in ppm via I2C
-uint32_t get_co2_data()
+void get_co2_data(void *argv)
 {
     uint32_t co2_data = 0;
     uint8_t meas[2] = {0x20, 0x08};
-    uint8_t res[6];
+    uint8_t res[6] = {0x00, 0x00};
 
-    i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
-    vTaskDelay(100 / portTICK_RATE_MS);
+    while(1)
+    {
+        i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
+        vTaskDelay(50 / portTICK_RATE_MS);
 
-    i2c_master_read_from_device(I2C_NUM_0, 0x58, res, 6, 1000 / portTICK_RATE_MS);
-    vTaskDelay(6 / portTICK_RATE_MS);
+        i2c_master_read_from_device(I2C_NUM_0, 0x58, res, 6, 1000 / portTICK_RATE_MS);
+        vTaskDelay(6 / portTICK_RATE_MS);
 
-    uint8_t temp_res[2] = {res[0], res[1]};
-    co2_data = temp_res[0] << 8 | temp_res[1];
+        uint8_t temp_res[2] = {res[0], res[1]};
+        co2_data = temp_res[0] << 8 | temp_res[1];
 
-    return co2_data;
+        Sensors.curr_co2 = co2_data;
+        vTaskDelay(100 / portTICK_RATE_MS);
+    }
+
+    return;
 }
 
 
 void print_SIM_Response(char * response, int start, int len)
 {
     
-    //printf("The response from the SIM800L for the provided AT command is:\n");  
+    printf("Cellular Module Response:\n");  
     printf("-----------------------------------------------------------\n"); 
 
     int i; 
