@@ -6,6 +6,7 @@
 // Main control flow for AlarmMe
 void app_main(void)
 {
+    // Delay starting to make sure reboot doesn't occur during UART transmission
     vTaskDelay(500 / portTICK_RATE_MS);
 
     // Initialize all peripherals
@@ -17,7 +18,7 @@ void app_main(void)
     // Initialize sensor tasks
     xTaskCreate(get_temp_data, "get_temp_data", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     xTaskCreate(get_pres_data, "get_pres_data", configMINIMAL_STACK_SIZE, NULL, 4, NULL);
-    xTaskCreate(get_co2_data, "get_co2_data", 2048, NULL, 6, NULL);
+    xTaskCreate(get_co2_data, "get_co2_data", TASK_STACK_SIZE, NULL, 6, NULL);
 
     // Regular Operation
     while(1) {
@@ -25,7 +26,7 @@ void app_main(void)
         // Loop to display sensor data
         display_sensor_data();
         process_data();
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(TIMER_DELAY);
     }
 
     // Should never reach here

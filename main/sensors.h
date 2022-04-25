@@ -39,6 +39,48 @@ struct Sensor_Data {
   bool alarm_co2;
 };
 
+// Task Declarations
+#define TASK_STACK_SIZE 2048
+#define TASK_DELAY 100 / portTICK_RATE_MS
+#define TIMER_DELAY 1000 / portTICK_RATE_MS
+
+// UART Declarations
+#define UART_2_TX 17
+#define UART_2_RX 16
+#define UART_2_BR 9600
+#define TX_BUFFER_SIZE 2048
+#define AT_CMD "AT\r\n"
+#define AT_CMD_LEN sizeof("AT\r\n") - 1
+#define AT_CSQ_CMD "AT+CSQ\r\n"
+#define AT_CSQ_CMD_LEN sizeof("AT+CSQ\r\n") - 1
+#define AT_TX_DELAY 100 / portTICK_RATE_MS
+#define AT_RX_DELAY 3000 / portTICK_RATE_MS
+
+// GPIO Declarations
+#define EXTERNAL_WAKEUP_PIN_NUM 26
+#define EXTERNAL_WAKEUP_PIN_BITS 1LL << 26
+#define LED_PIN_NUM 4
+#define BUZZER_PIN_NUM 25
+
+// I2C Declarations
+#define I2C_BUS_SDA 23
+#define I2C_BUS_SCL 22
+#define I2C_CLK 400000
+#define SGP30_ADDR 0x58
+#define I2C_TRANS_DELAY 1000 / portTICK_RATE_MS
+#define SGP30_INIT_DELAY 10 / portTICK_RATE_MS
+#define SGP30_MEAS_DELAY 100 / portTICK_RATE_MS
+#define SGP30_MEAS_READ_DELAY 50 / portTICK_RATE_MS
+#define SGP30_MEAS_SIZE 2
+#define SGP30_READ_DELAY 6
+#define SGP30_READ_SIZE 6
+
+// Regular Operation Declarations
+#define SLEEP_TIME_THRESH 90
+#define UNSAFE_TEMP_TRESH 70
+#define UNSAFE_C02_THRESH 400
+#define MAX_PRESSURE 4095
+
 
 // Global Sensor struct declaration
 struct Sensor_Data Sensors = {
@@ -75,17 +117,17 @@ void GPIO_init()
     printf("Beginning GPIO_init()...\n\n");
 
     // Configure IO26 as an input for external wakeup
-    gpio_pad_select_gpio(26);
-    gpio_set_direction(26, GPIO_MODE_INPUT);
-    esp_sleep_enable_ext1_wakeup(1LL << 26, ESP_EXT1_WAKEUP_ANY_HIGH);
+    gpio_pad_select_gpio(EXTERNAL_WAKEUP_PIN_NUM);
+    gpio_set_direction(EXTERNAL_WAKEUP_PIN_NUM, GPIO_MODE_INPUT);
+    esp_sleep_enable_ext1_wakeup(EXTERNAL_WAKEUP_PIN_BITS, ESP_EXT1_WAKEUP_ANY_HIGH);
 
     // Configure IO4 as an output for LED alarm
-    gpio_pad_select_gpio(4);
-    gpio_set_direction(4, GPIO_MODE_OUTPUT);
+    gpio_pad_select_gpio(LED_PIN_NUM);
+    gpio_set_direction(LED_PIN_NUM, GPIO_MODE_OUTPUT);
 
     // Configure IO25 as an output for buzzer alarm
-    gpio_pad_select_gpio(25);
-    gpio_set_direction(25, GPIO_MODE_OUTPUT);
+    gpio_pad_select_gpio(BUZZER_PIN_NUM);
+    gpio_set_direction(BUZZER_PIN_NUM, GPIO_MODE_OUTPUT);
 
     printf("GPIO pins successfully initialized!\n\n");
 
@@ -101,11 +143,11 @@ void I2C_init()
     // Configure I2C bus
     i2c_config_t config = {
         .mode = I2C_MODE_MASTER,
-        .sda_io_num = 23,
-        .scl_io_num = 22,
+        .sda_io_num = I2C_BUS_SDA,
+        .scl_io_num = I2C_BUS_SCL,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 400000,
+        .master.clk_speed = I2C_CLK,
     };
 
     i2c_param_config(I2C_NUM_0, &config);
@@ -116,12 +158,12 @@ void I2C_init()
     uint8_t meas[2] = {0x20, 0x08};
     
     // Write initialization command to CO2 sensor
-    i2c_master_write_to_device(I2C_NUM_0, 0x58, init, 2, 1000 / portTICK_RATE_MS);
-    vTaskDelay(10 / portTICK_RATE_MS);
+    i2c_master_write_to_device(I2C_NUM_0, SGP30_ADDR, init, 2, I2C_TRANS_DELAY);
+    vTaskDelay(SGP30_INIT_DELAY);
 
     // Write measure command to CO2 sensor
-    i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
-    vTaskDelay(100 / portTICK_RATE_MS);
+    i2c_master_write_to_device(I2C_NUM_0, SGP30_ADDR, meas, 2, I2C_TRANS_DELAY);
+    vTaskDelay(SGP30_MEAS_DELAY);
 
     printf("I2C devices successfully initialized!\n\n");
 
@@ -135,39 +177,37 @@ void UART_init(void)
     printf("Beginning UART_init()...\n\n");
     
     // Configure TX as IO17 and RX as IO16
-    gpio_set_direction(17, GPIO_MODE_OUTPUT);
-	gpio_set_direction(16, GPIO_MODE_INPUT);
+    gpio_set_direction(UART_2_TX, GPIO_MODE_OUTPUT);
+	gpio_set_direction(UART_2_RX, GPIO_MODE_INPUT);
 
     // Configure UART parameters
-    const uart_port_t uart_num = UART_NUM_2; // UART channel 2 
     uart_config_t uart_config = {
-        //.baud_rate = 115200,
-        .baud_rate = 9600,
+        .baud_rate = UART_2_BR,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE, 
     };
 
-    uart_param_config(uart_num, &uart_config);
-    uart_set_pin(uart_num, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    uart_driver_install(uart_num, 1024 * 2, 0, 0, NULL, 0);
+    uart_param_config(UART_NUM_2, &uart_config);
+    uart_set_pin(UART_NUM_2, UART_2_TX, UART_2_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(UART_NUM_2, TX_BUFFER_SIZE, 0, 0, NULL, 0);
     
     char data[256];
     int len = 0;
 
     // Send AT command to SIM
     printf("Sending \'AT\' to SIM Module...\n");
-    uart_write_bytes(uart_num, "AT\r\n", sizeof("AT\r\n") - 1);
-	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
-    len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
+    uart_write_bytes(UART_NUM_2, AT_CMD, AT_CMD_LEN);
+	uart_wait_tx_done(UART_NUM_2, AT_TX_DELAY); 
+    len = uart_read_bytes(UART_NUM_2, (uint8_t *)data, 256, AT_RX_DELAY);
     print_SIM_Response(data, 1, len);
 
     // Send AT+CSQ command to SIM
     printf("Sending \'AT=CSQ\' to SIM Module...\n");
-    uart_write_bytes(uart_num, "AT+CSQ\r\n", sizeof("AT+CSQ\r\n") - 1); 
-	uart_wait_tx_done(uart_num, 100 / portTICK_RATE_MS); 
-    len = uart_read_bytes(uart_num, (uint8_t *)data, 256, 3000 / portTICK_RATE_MS);
+    uart_write_bytes(UART_NUM_2, AT_CSQ_CMD, AT_CSQ_CMD_LEN); 
+	uart_wait_tx_done(UART_NUM_2, AT_TX_DELAY); 
+    len = uart_read_bytes(UART_NUM_2, (uint8_t *)data, 256, AT_RX_DELAY);
     print_SIM_Response(data, 0, len);
 
     printf("UART Peripheral successfully initialized!\n\n");
@@ -188,20 +228,26 @@ void display_sensor_data()
 // Function to interpret sensor data to set alarm flags and enter alarm states
 void process_data(void)
 {
+    // Reset alarms from previous iteration, set alarms for this iteration
     clear_flags();
     set_alarms();
 
+    // Case: Pressure reads 0, no child in car seat, increment no_pres_time
     if (Sensors.curr_pres == 0)
     {
         Sensors.no_pres_time += 1;
 
-        if (Sensors.no_pres_time == 20)
+        // Case: No child detected in seat for SLEEP_TIME_THRESH seconds, put AlarmMe into deep sleep
+        if (Sensors.no_pres_time == SLEEP_TIME_THRESH)
         {
             esp_deep_sleep_start();
         }
     }
+    
+    // Case: Pressure reads non_zero, child detected in seat
     else
     {
+        // Reset no_pres_time since a non-zero pressure was read
         Sensors.no_pres_time = 0;
     }
 
@@ -225,8 +271,8 @@ void clear_flags(void)
     Sensors.alarm_co2 = false;
 
     // Reset LED and buzzer to OFF
-    gpio_set_level(4, 0);
-    gpio_set_level(25, 0);
+    gpio_set_level(LED_PIN_NUM, 0);
+    gpio_set_level(BUZZER_PIN_NUM, 0);
 
     return;
 }
@@ -235,12 +281,14 @@ void clear_flags(void)
 // Function to check the current readings and determine if alarm state should be triggered
 void set_alarms()
 {
-    if ((Sensors.curr_temp > 70) && (Sensors.curr_pres == 4095))
+    // Case: Unsafe temperature reading and child detected in seat, trigger temperature alarm
+    if ((Sensors.curr_temp > UNSAFE_TEMP_TRESH) && (Sensors.curr_pres == MAX_PRESSURE))
     {
         Sensors.alarm_temp = 1;
     }
 
-    if ((Sensors.curr_co2 < 400) && (Sensors.curr_pres == 4095))
+    // Case: Unsafe CO2 reading and child detected in seat, trigger CO2 alarm
+    if ((Sensors.curr_co2 < UNSAFE_C02_THRESH) && (Sensors.curr_pres == MAX_PRESSURE))
     {
         Sensors.alarm_co2 = 1;
     }
@@ -253,10 +301,10 @@ void set_alarms()
 void alarm()
 {
     // Enable the red LED
-    gpio_set_level(4, 1);
+    gpio_set_level(LED_PIN_NUM, 1);
 
     // Enable buzzer
-    gpio_set_level(25, 1);
+    gpio_set_level(BUZZER_PIN_NUM, 1);
 
     return;
 }
@@ -273,10 +321,10 @@ void get_temp_data(void *argv)
     {
         // Sample ADC
         temp = adc1_get_raw((adc1_channel_t) ADC_CHANNEL_6);
-        Sensors.curr_temp = ((((1.8663 - ((temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20;
+        Sensors.curr_temp = (((((1.8663 - ((temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20) - 7;
         
         // Delay before next iteration
-        vTaskDelay(100 / portTICK_RATE_MS);
+        vTaskDelay(TASK_DELAY);
     }
 
     return;  // Should never reach
@@ -297,7 +345,7 @@ void get_pres_data(void *argv)
         Sensors.curr_pres = pres;
 
         // Delay before next iteration
-        vTaskDelay(100 / portTICK_RATE_MS);
+        vTaskDelay(TASK_DELAY);
     }
         
     return;
@@ -318,12 +366,12 @@ void get_co2_data(void *argv)
     while(1)
     {
         // Send measure command to device and wait
-        i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
-        vTaskDelay(50 / portTICK_RATE_MS);
+        i2c_master_write_to_device(I2C_NUM_0, SGP30_ADDR, meas, SGP30_MEAS_SIZE, I2C_TRANS_DELAY);
+        vTaskDelay(SGP30_MEAS_READ_DELAY);
 
         // Send read command to device and wait
-        i2c_master_read_from_device(I2C_NUM_0, 0x58, res, 6, 1000 / portTICK_RATE_MS);
-        vTaskDelay(6 / portTICK_RATE_MS);
+        i2c_master_read_from_device(I2C_NUM_0, SGP30_ADDR, res, SGP30_READ_SIZE, I2C_TRANS_DELAY);
+        vTaskDelay(SGP30_READ_DELAY);
 
         // Process return bytes
         uint8_t temp_res[2] = {res[0], res[1]};
@@ -331,7 +379,7 @@ void get_co2_data(void *argv)
         Sensors.curr_co2 = co2_data;
 
         // Delay before next iteration
-        vTaskDelay(100 / portTICK_RATE_MS);
+        vTaskDelay(TASK_DELAY);
     }
 
     return;
