@@ -20,34 +20,15 @@ void app_main(void)
     xTaskCreate(get_co2_data, "get_co2_data", 2048, NULL, 6, NULL);
 
     // Regular Operation
-    //run();
-
     while(1) {
 
         // Loop to display sensor data
         display_sensor_data();
-        //get_sensor_data();
-        //process_data();
+        process_data();
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
     // Should never reach here
     printf("Reached return in main... error\n");
     return;
-}
-
-
-// Regular operation
-void run(void)
-{
-    while(1) {
-
-        // Loop to display sensor data
-        display_sensor_data();
-        //get_sensor_data();
-        //process_data();
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-
-    return;  // Should never return
 }

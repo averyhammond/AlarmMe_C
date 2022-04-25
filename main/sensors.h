@@ -262,14 +262,20 @@ void alarm()
 }
 
 
+// Function to sample the temperature sensor via ADC
 void get_temp_data(void *argv)
 {
+    // Current temperature value
     uint32_t temp = 0;
 
+    // Task loop
     while(1)
     {
+        // Sample ADC
         temp = adc1_get_raw((adc1_channel_t) ADC_CHANNEL_6);
         Sensors.curr_temp = ((((1.8663 - ((temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20;
+        
+        // Delay before next iteration
         vTaskDelay(100 / portTICK_RATE_MS);
     }
 
@@ -277,14 +283,20 @@ void get_temp_data(void *argv)
 }
 
 
+// Function to sample the pressure sensor via ADC
 void get_pres_data(void *argv)
 {
+    // Current pressure value
     uint32_t pres = 0;
     
+    // Task loop
     while(1)
     {
+        // Sample ADC
         pres = adc1_get_raw((adc1_channel_t) ADC_CHANNEL_3);
         Sensors.curr_pres = pres;
+
+        // Delay before next iteration
         vTaskDelay(100 / portTICK_RATE_MS);
     }
         
@@ -292,24 +304,33 @@ void get_pres_data(void *argv)
 }
 
 
+// Function to sample the CO2 sensor via I2C bus
 void get_co2_data(void *argv)
 {
+    // Current co2 measurements
     uint32_t co2_data = 0;
+    
+    // Command bytes
     uint8_t meas[2] = {0x20, 0x08};
     uint8_t res[6] = {0x00, 0x00};
 
+    // Task loop
     while(1)
     {
+        // Send measure command to device and wait
         i2c_master_write_to_device(I2C_NUM_0, 0x58, meas, 2, 1000 / portTICK_RATE_MS);
         vTaskDelay(50 / portTICK_RATE_MS);
 
+        // Send read command to device and wait
         i2c_master_read_from_device(I2C_NUM_0, 0x58, res, 6, 1000 / portTICK_RATE_MS);
         vTaskDelay(6 / portTICK_RATE_MS);
 
+        // Process return bytes
         uint8_t temp_res[2] = {res[0], res[1]};
         co2_data = temp_res[0] << 8 | temp_res[1];
-
         Sensors.curr_co2 = co2_data;
+
+        // Delay before next iteration
         vTaskDelay(100 / portTICK_RATE_MS);
     }
 
@@ -317,6 +338,7 @@ void get_co2_data(void *argv)
 }
 
 
+// Function to print the responses from the cellular module
 void print_SIM_Response(char * response, int start, int len)
 {
     
