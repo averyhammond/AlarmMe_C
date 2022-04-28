@@ -78,8 +78,8 @@ struct Sensor_Data {
 // Regular Operation Declarations
 #define SLEEP_TIME_THRESH 90
 #define UNSAFE_TEMP_TRESH 70
-#define UNSAFE_C02_THRESH 400
-#define MAX_PRESSURE 4095
+#define UNSAFE_C02_THRESH 700
+#define MAX_PRESSURE 3500
 
 
 // Global Sensor struct declaration
@@ -282,13 +282,13 @@ void clear_flags(void)
 void set_alarms()
 {
     // Case: Unsafe temperature reading and child detected in seat, trigger temperature alarm
-    if ((Sensors.curr_temp > UNSAFE_TEMP_TRESH) && (Sensors.curr_pres == MAX_PRESSURE))
+    if ((Sensors.curr_temp > UNSAFE_TEMP_TRESH) && (Sensors.curr_pres > MAX_PRESSURE))
     {
         Sensors.alarm_temp = 1;
     }
 
     // Case: Unsafe CO2 reading and child detected in seat, trigger CO2 alarm
-    if ((Sensors.curr_co2 < UNSAFE_C02_THRESH) && (Sensors.curr_pres == MAX_PRESSURE))
+    if ((Sensors.curr_co2 > UNSAFE_C02_THRESH) && (Sensors.curr_pres > MAX_PRESSURE))
     {
         Sensors.alarm_co2 = 1;
     }
@@ -321,7 +321,7 @@ void get_temp_data(void *argv)
     {
         // Sample ADC
         temp = adc1_get_raw((adc1_channel_t) ADC_CHANNEL_6);
-        Sensors.curr_temp = (((((1.8663 - ((temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20) - 7;
+        Sensors.curr_temp = (((((1.8663 - ((temp * 3.3) / 4095)) / .01169) * 9) / 5) + 32 - 20) - 13;
         
         // Delay before next iteration
         vTaskDelay(TASK_DELAY);
